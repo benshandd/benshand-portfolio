@@ -24,17 +24,30 @@ export async function upsertCategory(input: z.infer<typeof categorySchema>) {
   const parsed = categorySchema.parse(input);
   const normalizedSlug = slugify(parsed.slug);
 
+  let categoryId = parsed.id ?? null;
+
   if (parsed.id) {
     await db
       .update(blogCategories)
       .set({ name: parsed.name, slug: normalizedSlug })
       .where(eq(blogCategories.id, parsed.id));
   } else {
-    await db.insert(blogCategories).values({ name: parsed.name, slug: normalizedSlug });
+    const [created] = await db
+      .insert(blogCategories)
+      .values({ name: parsed.name, slug: normalizedSlug })
+      .returning({ id: blogCategories.id });
+
+    categoryId = created?.id ?? null;
   }
 
   revalidatePath("/blog");
-  return { ok: true } as const;
+  return {
+    ok: true,
+    category:
+      categoryId !== null
+        ? { id: categoryId, name: parsed.name, slug: normalizedSlug }
+        : undefined,
+  } as const;
 }
 
 export async function deleteCategory(id: string, fallbackCategoryId?: string) {

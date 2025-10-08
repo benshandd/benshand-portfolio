@@ -10,11 +10,9 @@ type Role = "owner" | "editor" | "viewer";
 const navItems: Array<{ href: string; label: string; roles: Role[] }> = [
   { href: "/dashboard", label: "Dashboard", roles: ["owner", "editor", "viewer"] },
   { href: "/dashboard/posts", label: "Posts", roles: ["owner", "editor", "viewer"] },
-  { href: "/dashboard/categories", label: "Categories", roles: ["owner", "editor"] },
   { href: "/dashboard/books", label: "Books", roles: ["owner", "editor", "viewer"] },
   { href: "/dashboard/courses", label: "Courses", roles: ["owner", "editor", "viewer"] },
   { href: "/dashboard/settings", label: "Settings", roles: ["owner"] },
-  { href: "/dashboard/media", label: "Media", roles: ["owner", "editor"] },
 ];
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {

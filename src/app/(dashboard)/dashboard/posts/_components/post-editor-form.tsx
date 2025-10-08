@@ -1,10 +1,11 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { useDebounce } from "usehooks-ts";
+import { useDebounceValue } from "usehooks-ts";
 
-import { Editor } from "@/components/editor/editor";
+import { FileUploadField } from "@/components/client/file-upload-field";
 import { EditorRenderer } from "@/components/editor/renderer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,14 +14,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { emptyEditorContent, type EditorContent } from "@/lib/editor";
 import type { UpsertPostInput } from "@/server/actions/posts";
 import { upsertPost } from "@/server/actions/posts";
+import { upsertCategory } from "@/server/actions/categories";
 import { slugify } from "@/lib/utils";
 
 interface PostEditorFormProps {
   initialData: Partial<UpsertPostInput> & { id?: string; updatedAt?: string | Date };
-  categories: Array<{ id: string; name: string }>;
+  categories: Array<{ id: string; name: string; slug: string }>;
 }
 
 type EditorStatus = "idle" | "saving" | "saved" | "error";
+
+const Editor = dynamic(() => import("@/components/editor/editor").then((mod) => mod.Editor), {
+  ssr: false,
+});
 
 export function PostEditorForm({ initialData, categories }: PostEditorFormProps) {
   const initialContent: EditorContent =
@@ -35,6 +41,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
   const [slug, setSlug] = useState(initialData.slug ?? "");
   const [summary, setSummary] = useState(initialData.summary ?? "");
   const [categoryId, setCategoryId] = useState(initialData.categoryId ?? "");
+  const [availableCategories, setAvailableCategories] = useState(categories);
   const [tags, setTags] = useState((initialData.tags as string[] | undefined)?.join(", ") ?? "");
   const [heroImageUrl, setHeroImageUrl] = useState(initialData.heroImageUrl ?? "");
   const [content, setContent] = useState<EditorContent>(initialContent);
@@ -45,10 +52,15 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
     initialData.updatedAt ? new Date(initialData.updatedAt as Date | string) : null,
   );
   const [isDirty, setIsDirty] = useState(false);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategorySlug, setNewCategorySlug] = useState("");
+  const [categoryMessage, setCategoryMessage] = useState<string | null>(null);
+  const [categoryStatus, setCategoryStatus] = useState<"idle" | "success" | "error">("idle");
   const [, forceRelativeUpdate] = useReducer((count: number) => count + 1, 0);
   const beforeUnloadHandlerRef = useRef<((event: BeforeUnloadEvent) => void) | null>(null);
 
-  const debouncedTitle = useDebounce(title, 500);
+  const debouncedTitle = useDebounceValue(title, 500);
 
   const normalizedTags = useMemo(() => {
     return Array.from(
@@ -79,6 +91,10 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
 
   const lastSavedSnapshotRef = useRef(currentSnapshot);
   const hasInitialisedSnapshotRef = useRef(false);
+
+  useEffect(() => {
+    setAvailableCategories(categories);
+  }, [categories]);
 
   useEffect(() => {
     if (!isSlugDirty && debouncedTitle) {
@@ -218,6 +234,14 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
   }, [canSaveDraft, handleSave, isDirty, status]);
 
   useEffect(() => {
+    if (!newCategoryName) {
+      setNewCategorySlug("");
+      return;
+    }
+    setNewCategorySlug(slugify(newCategoryName));
+  }, [newCategoryName]);
+
+  useEffect(() => {
     const interval = setInterval(() => {
       handleAutoSave();
     }, 10000);
@@ -239,10 +263,45 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
       default:
         if (lastSavedAt) {
           return `Saved ${formatDistanceToNow(lastSavedAt, { addSuffix: true })}`;
-        }
-        return "Idle";
+      }
+      return "Idle";
     }
   }, [lastSavedAt, status]);
+
+  const handleCreateCategory = useCallback(async () => {
+    if (!newCategoryName.trim()) {
+      setCategoryMessage("Name is required");
+      setCategoryStatus("error");
+      return;
+    }
+
+    setIsAddingCategory(true);
+    setCategoryMessage(null);
+    setCategoryStatus("idle");
+    try {
+      const result = await upsertCategory({
+        name: newCategoryName.trim(),
+        slug: newCategorySlug || slugify(newCategoryName),
+      });
+      if (result.category) {
+        setAvailableCategories((prev) => {
+          const next = [...prev.filter((item) => item.id !== result.category.id), result.category];
+          return next.sort((a, b) => a.name.localeCompare(b.name));
+        });
+        setCategoryId(result.category.id);
+        setNewCategoryName("");
+        setNewCategorySlug("");
+        setCategoryMessage("Category created");
+        setCategoryStatus("success");
+      }
+    } catch (error) {
+      console.error(error);
+      setCategoryMessage(error instanceof Error ? error.message : "Failed to save category");
+      setCategoryStatus("error");
+    } finally {
+      setIsAddingCategory(false);
+    }
+  }, [newCategoryName, newCategorySlug]);
 
   return (
     <form className="space-y-6" action={async () => {}}>
@@ -316,12 +375,55 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
             className="h-10 rounded-md border border-[hsl(var(--input))] bg-transparent px-3 text-sm"
           >
             <option value="">Select category</option>
-            {categories.map((category) => (
+            {availableCategories.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
               </option>
             ))}
           </select>
+          <div className="space-y-2 rounded-md border border-dashed border-[hsl(var(--border))] p-3 text-xs">
+            <div className="font-medium">Need a new category?</div>
+            <div className="grid gap-2">
+              <Input
+                placeholder="Category name"
+                value={newCategoryName}
+                onChange={(event) => {
+                  setNewCategoryName(event.target.value);
+                  setCategoryMessage(null);
+                  setCategoryStatus("idle");
+                }}
+              />
+              <Input
+                placeholder="category-slug"
+                value={newCategorySlug}
+                onChange={(event) => {
+                  setNewCategorySlug(event.target.value);
+                  setCategoryMessage(null);
+                  setCategoryStatus("idle");
+                }}
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void handleCreateCategory()}
+                disabled={isAddingCategory}
+              >
+                {isAddingCategory ? "Saving…" : "Save category"}
+              </Button>
+              {categoryMessage ? (
+                <p
+                  className={
+                    categoryStatus === "error"
+                      ? "text-red-600"
+                      : "text-[hsl(var(--fg-muted))]"
+                  }
+                >
+                  {categoryMessage}
+                </p>
+              ) : null}
+            </div>
+          </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="tags">Tags</Label>
@@ -334,16 +436,18 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
           />
           <p className="text-xs text-[hsl(var(--fg-muted))]">Separate tags with commas.</p>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="heroImage">Hero image URL</Label>
-          <Input
-            id="heroImage"
-            value={heroImageUrl}
-            onChange={(event) => setHeroImageUrl(event.target.value)}
-            onBlur={handleBlurAutoSave}
-            placeholder="https://..."
-          />
-        </div>
+        <FileUploadField
+          id="heroImage"
+          label="Hero image"
+          value={heroImageUrl}
+          onChange={(next) => {
+            setHeroImageUrl(next);
+            setTimeout(() => handleBlurAutoSave(), 0);
+          }}
+          description="Upload a featured image or paste an external URL."
+          accept="image/*"
+          onBlur={handleBlurAutoSave}
+        />
       </div>
       <div className="space-y-2">
         <Label>Content</Label>
