@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --bg: 0 0% 100%;
+  --bg-muted: 210 40% 96%;
+  --fg: 222 47% 11%;
+  --fg-muted: 215 20% 50%;
+  --brand: 221 83% 53%;
+  --brand-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 221 83% 53%;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: 222 47% 11%;
+  --bg-muted: 224 38% 17%;
+  --fg: 210 40% 96%;
+  --fg-muted: 215 20% 65%;
+  --brand: 221 83% 53%;
+  --brand-foreground: 0 0% 100%;
+  --border: 217 33% 20%;
+  --input: 217 33% 20%;
+  --ring: 221 83% 75%;
+}
+
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+  html {
+    font-size: 16px;
+  }
+  body {
+    @apply bg-[hsl(var(--bg))] text-[hsl(var(--fg))] antialiased;
+    font-family: var(--font-inter);
+    line-height: 1.5;
+  }
+}
+
+@layer utilities {
+  .container-desktop {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    max-width: 90rem;
+  }
+}
