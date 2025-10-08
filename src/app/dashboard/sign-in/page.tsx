@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { AuthError } from "next-auth";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,11 +23,18 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
     if (typeof email !== "string" || typeof password !== "string") {
       return;
     }
-    await signIn("credentials", {
-      email,
-      password,
-      redirectTo: typeof redirect === "string" ? redirect : "/dashboard",
-    });
+    try {
+      await signIn("credentials", {
+        email,
+        password,
+        redirectTo: typeof redirect === "string" ? redirect : "/dashboard",
+      });
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return;
+      }
+      throw error;
+    }
   }
 
   return (

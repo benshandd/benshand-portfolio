@@ -1,5 +1,6 @@
 import "dotenv/config";
 
+import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
 
 import { db } from "@/db/client";
@@ -121,20 +122,32 @@ async function main() {
     ]);
   }
 
-  if (serverEnv.OWNER_EMAIL && serverEnv.OWNER_PASSWORD_HASH) {
+  if (serverEnv.OWNER_EMAIL && serverEnv.OWNER_PASSWORD) {
+    const ownerEmail = serverEnv.OWNER_EMAIL.toLowerCase();
+    const looksHashed = serverEnv.OWNER_PASSWORD.startsWith("$2");
+    const passwordHash = looksHashed
+      ? serverEnv.OWNER_PASSWORD
+      : await bcrypt.hash(serverEnv.OWNER_PASSWORD, 12);
+
     const existingOwner = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.email, serverEnv.OWNER_EMAIL.toLowerCase()))
+      .where(eq(users.email, ownerEmail))
       .limit(1);
 
     if (!existingOwner.length) {
       await db.insert(users).values({
-        email: serverEnv.OWNER_EMAIL.toLowerCase(),
-        passwordHash: serverEnv.OWNER_PASSWORD_HASH,
+        email: ownerEmail,
+        passwordHash,
         role: "owner",
         name: "Owner",
       });
+    } else {
+      // Ensure the seeded owner can sign in with the provided password
+      await db
+        .update(users)
+        .set({ passwordHash, role: "owner" })
+        .where(eq(users.id, existingOwner[0].id));
     }
   }
 }

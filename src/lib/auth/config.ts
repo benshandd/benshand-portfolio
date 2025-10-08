@@ -35,6 +35,50 @@ export const authConfig: NextAuthConfig = {
           .from(users)
           .where(eq(users.email, email.toLowerCase()));
         if (!user) {
+          // Bootstrap flow: allow first login using OWNER_EMAIL/OWNER_PASSWORD
+          // and create the owner user on the fly for convenience.
+          if (
+            serverEnv.OWNER_EMAIL &&
+            serverEnv.OWNER_PASSWORD &&
+            email.toLowerCase() === serverEnv.OWNER_EMAIL.toLowerCase()
+          ) {
+            // OWNER_PASSWORD can be plain text (preferred) or a bcrypt hash.
+            const looksHashed = serverEnv.OWNER_PASSWORD.startsWith("$2");
+            const passwordMatches = looksHashed
+              ? await bcrypt.compare(password, serverEnv.OWNER_PASSWORD)
+              : password === serverEnv.OWNER_PASSWORD;
+
+            if (!passwordMatches) {
+              return null;
+            }
+
+            const passwordHash = looksHashed
+              ? serverEnv.OWNER_PASSWORD
+              : await bcrypt.hash(serverEnv.OWNER_PASSWORD, 12);
+
+            await db.insert(users).values({
+              email: serverEnv.OWNER_EMAIL.toLowerCase(),
+              passwordHash,
+              role: "owner",
+              name: "Owner",
+            });
+
+            const [created] = await db
+              .select()
+              .from(users)
+              .where(eq(users.email, serverEnv.OWNER_EMAIL.toLowerCase()));
+
+            if (!created) return null;
+
+            return {
+              id: created.id,
+              email: created.email,
+              name: created.name ?? undefined,
+              image: created.image ?? undefined,
+              role: created.role,
+            } as const;
+          }
+
           return null;
         }
         const valid = await bcrypt.compare(password, user.passwordHash);

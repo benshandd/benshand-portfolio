@@ -28,7 +28,7 @@ A modern developer portfolio built with Next.js App Router, Supabase, Drizzle OR
    pnpm db:seed
    ```
 
-   The seed script loads starter profile settings, categories, a draft post, example books/courses, and an optional owner user when `OWNER_EMAIL` and `OWNER_PASSWORD_HASH` are set.
+   The seed script loads starter profile settings, categories, a draft post, example books/courses, and an optional owner user when `OWNER_EMAIL` and `OWNER_PASSWORD` are set.
 
 4. **Start the development server**
 

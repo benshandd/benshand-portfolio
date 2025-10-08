@@ -10,7 +10,7 @@ const serverSchema = z.object({
   SUPABASE_BUCKET: z.string().default("uploads"),
   REVALIDATE_SECRET: z.string().min(1, "REVALIDATE_SECRET is required"),
   OWNER_EMAIL: z.string().email().optional(),
-  OWNER_PASSWORD_HASH: z.string().optional(),
+  OWNER_PASSWORD: z.string().optional(),
 });
 
 const parsed = serverSchema.safeParse({
@@ -23,7 +23,7 @@ const parsed = serverSchema.safeParse({
   SUPABASE_BUCKET: process.env.SUPABASE_BUCKET,
   REVALIDATE_SECRET: process.env.REVALIDATE_SECRET,
   OWNER_EMAIL: process.env.OWNER_EMAIL,
-  OWNER_PASSWORD_HASH: process.env.OWNER_PASSWORD_HASH,
+  OWNER_PASSWORD: process.env.OWNER_PASSWORD,
 });
 
 if (!parsed.success) {
