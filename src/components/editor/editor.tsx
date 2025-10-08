@@ -7,9 +7,9 @@ import Header from "@editorjs/header";
 import ImageTool from "@editorjs/image";
 import List from "@editorjs/list";
 import Quote from "@editorjs/quote";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
-import type { EditorContent } from "@/lib/editor";
+import { emptyEditorContent, type EditorContent } from "@/lib/editor";
 
 interface EditorProps {
   value?: EditorContent;
@@ -17,24 +17,36 @@ interface EditorProps {
   readOnly?: boolean;
 }
 
-export function Editor({ value, onChange, readOnly }: EditorProps) {
+export function Editor({ value, onChange, readOnly = false }: EditorProps) {
   const editorRef = useRef<EditorJS | null>(null);
   const holderRef = useRef<HTMLDivElement>(null);
+  const onChangeRef = useRef<typeof onChange>();
+  const lastSyncedValueRef = useRef<EditorContent>(value ?? emptyEditorContent);
+
+  onChangeRef.current = onChange;
+
+  const initialData = useMemo<OutputData>(() => {
+    const data = value ?? emptyEditorContent;
+    lastSyncedValueRef.current = data;
+    return data as OutputData;
+  }, [value]);
 
   useEffect(() => {
-    if (readOnly) {
+    if (!holderRef.current) {
       return;
     }
 
-    if (!holderRef.current) return;
-    if (editorRef.current) return;
+    if (editorRef.current) {
+      return;
+    }
 
     const editor = new EditorJS({
       holder: holderRef.current,
-      data: value as OutputData,
+      data: initialData,
+      readOnly,
       placeholder: "Start writing your story...",
       inlineToolbar: true,
-      autofocus: true,
+      autofocus: !readOnly,
       tools: {
         header: Header,
         list: List,
@@ -46,24 +58,33 @@ export function Editor({ value, onChange, readOnly }: EditorProps) {
           config: {
             uploader: {
               async uploadByFile(file: File) {
-                const formData = new FormData();
-                formData.append("file", file);
-                const response = await fetch("/api/upload", {
-                  method: "POST",
-                  body: formData,
-                });
-                if (!response.ok) {
-                  throw new Error("Upload failed");
+                try {
+                  const formData = new FormData();
+                  formData.append("file", file);
+                  const response = await fetch("/api/upload", {
+                    method: "POST",
+                    body: formData,
+                  });
+                  if (!response.ok) {
+                    throw new Error("Upload failed");
+                  }
+                  const json = await response.json();
+                  return {
+                    success: 1,
+                    file: {
+                      url: json.publicUrl,
+                      width: json.width,
+                      height: json.height,
+                    },
+                  } as const;
+                } catch (error) {
+                  console.error(error);
+                  return {
+                    success: 0,
+                    message:
+                      error instanceof Error && error.message ? error.message : "Upload failed",
+                  } as const;
                 }
-                const json = await response.json();
-                return {
-                  success: 1,
-                  file: {
-                    url: json.publicUrl,
-                    width: json.width,
-                    height: json.height,
-                  },
-                };
               },
             },
           },
@@ -71,25 +92,66 @@ export function Editor({ value, onChange, readOnly }: EditorProps) {
       },
       async onChange(api) {
         const data = (await api.saver.save()) as EditorContent;
-        onChange?.(data);
+        lastSyncedValueRef.current = data;
+        onChangeRef.current?.(data);
       },
     });
 
     editorRef.current = editor;
 
     return () => {
-      editor.isReady.then(() => {
-        editor.destroy();
-        editorRef.current = null;
-      });
+      editor.isReady
+        .then(() => {
+          editor.destroy();
+        })
+        .finally(() => {
+          editorRef.current = null;
+        });
     };
-  }, [onChange, readOnly, value]);
+  }, [initialData, readOnly]);
 
   useEffect(() => {
-    if (readOnly && value && holderRef.current) {
-      holderRef.current.innerHTML = "";
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
     }
-  }, [readOnly, value]);
+
+    void editor.isReady.then(() => {
+      if (readOnly) {
+        void editor.readOnly?.enable();
+      } else {
+        void editor.readOnly?.disable();
+      }
+    });
+  }, [readOnly]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+
+    const nextValue = (value ?? emptyEditorContent) as OutputData;
+    const previousValue = lastSyncedValueRef.current;
+
+    if (deepEqual(previousValue, nextValue)) {
+      return;
+    }
+
+    void editor.isReady.then(async () => {
+      lastSyncedValueRef.current = nextValue;
+      await editor.render(nextValue);
+    });
+  }, [value]);
 
   return <div ref={holderRef} className="min-h-[320px]" />;
+}
+
+function deepEqual(a: EditorContent | OutputData, b: EditorContent | OutputData) {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch (error) {
+    console.error("Failed to compare editor content", error);
+    return false;
+  }
 }
