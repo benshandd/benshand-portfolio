@@ -1,6 +1,7 @@
 "use client";
 
 import EditorJS, { OutputData } from "@editorjs/editorjs";
+import type { EditorConfig } from "@editorjs/editorjs/types/configs/editor-config";
 import Checklist from "@editorjs/checklist";
 import Code from "@editorjs/code";
 import Header from "@editorjs/header";
@@ -20,7 +21,7 @@ interface EditorProps {
 export function Editor({ value, onChange, readOnly = false }: EditorProps) {
   const editorRef = useRef<EditorJS | null>(null);
   const holderRef = useRef<HTMLDivElement>(null);
-  const onChangeRef = useRef<typeof onChange>();
+  const onChangeRef = useRef<typeof onChange | undefined>(undefined);
   const lastSyncedValueRef = useRef<EditorContent>(value ?? emptyEditorContent);
 
   onChangeRef.current = onChange;
@@ -89,7 +90,7 @@ export function Editor({ value, onChange, readOnly = false }: EditorProps) {
             },
           },
         },
-      },
+      } as EditorConfig["tools"],
       async onChange(api) {
         const data = (await api.saver.save()) as EditorContent;
         lastSyncedValueRef.current = data;
@@ -118,9 +119,17 @@ export function Editor({ value, onChange, readOnly = false }: EditorProps) {
 
     void editor.isReady.then(() => {
       if (readOnly) {
-        void editor.readOnly?.enable();
+        const readOnlyApi = editor.readOnly as unknown as {
+          enable?: () => void;
+          disable?: () => void;
+        };
+        readOnlyApi.enable?.();
       } else {
-        void editor.readOnly?.disable();
+        const readOnlyApi = editor.readOnly as unknown as {
+          enable?: () => void;
+          disable?: () => void;
+        };
+        readOnlyApi.disable?.();
       }
     });
   }, [readOnly]);

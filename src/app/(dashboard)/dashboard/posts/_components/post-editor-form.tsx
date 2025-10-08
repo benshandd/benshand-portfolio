@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { useDebounce } from "usehooks-ts";
+import { useDebounceValue } from "usehooks-ts";
 
 import { Editor } from "@/components/editor/editor";
 import { EditorRenderer } from "@/components/editor/renderer";
@@ -48,7 +48,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
   const [, forceRelativeUpdate] = useReducer((count: number) => count + 1, 0);
   const beforeUnloadHandlerRef = useRef<((event: BeforeUnloadEvent) => void) | null>(null);
 
-  const debouncedTitle = useDebounce(title, 500);
+  const [debouncedTitle] = useDebounceValue(title, 500);
 
   const normalizedTags = useMemo(() => {
     return Array.from(

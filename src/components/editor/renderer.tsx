@@ -39,22 +39,26 @@ export function EditorRenderer({ content }: EditorRendererProps) {
           case "header": {
             const levelValue = Number((data as { level?: unknown }).level ?? 2);
             const level = Math.min(Math.max(Number.isFinite(levelValue) ? levelValue : 2, 1), 6);
-            const Tag = `h${level}` as keyof JSX.IntrinsicElements;
+            const Tag = `h${level}` as keyof React.JSX.IntrinsicElements;
             const text = typeof (data as { text?: unknown }).text === "string" ? data.text : "";
-            return <Tag key={block.id}>{text}</Tag>;
+            return React.createElement(Tag, { key: block.id ?? block.type }, text as React.ReactNode);
           }
           case "paragraph":
+            const paragraphData = data as { text?: unknown };
+            const paragraphHtml =
+              typeof paragraphData.text === "string" ? paragraphData.text : "";
             return (
               <p
                 key={block.id}
                 dangerouslySetInnerHTML={{
-                  __html: typeof (data as { text?: unknown }).text === "string" ? data.text : "",
+                  __html: paragraphHtml,
                 }}
               />
             );
           case "list": {
-            const items = isStringArray((data as { items?: unknown }).items) ? data.items : [];
-            const isOrdered = (data as { style?: unknown }).style === "ordered";
+            const listData = data as { items?: unknown; style?: unknown };
+            const items = isStringArray(listData.items) ? listData.items : [];
+            const isOrdered = listData.style === "ordered";
             if (isOrdered) {
               return (
                 <ol key={block.id}>
@@ -77,62 +81,65 @@ export function EditorRenderer({ content }: EditorRendererProps) {
               <blockquote key={block.id}>
                 <p
                   dangerouslySetInnerHTML={{
-                    __html: typeof (data as { text?: unknown }).text === "string" ? data.text : "",
+                    __html:
+                      typeof (data as { text?: unknown }).text === "string"
+                        ? (data as { text: string }).text
+                        : "",
                   }}
                 />
                 {typeof (data as { caption?: unknown }).caption === "string" ? (
-                  <cite>{data.caption}</cite>
+                  <cite>{(data as { caption: string }).caption}</cite>
                 ) : null}
               </blockquote>
             );
           case "code":
+            const codeData = data as { code?: unknown };
+            const codeText = typeof codeData.code === "string" ? codeData.code : "";
             return (
               <pre key={block.id}>
-                <code>
-                  {typeof (data as { code?: unknown }).code === "string" ? data.code : ""}
-                </code>
+                <code>{codeText}</code>
               </pre>
             );
           case "checklist":
+            const checklistData = data as { items?: unknown };
+            const checklistItems = isChecklistItems(checklistData.items) ? checklistData.items : [];
             return (
               <ul key={block.id} className="not-prose space-y-2">
-                {isChecklistItems((data as { items?: unknown }).items)
-                  ? data.items.map((item, index) => (
-                      <li key={index} className="flex items-center gap-2">
-                        <input type="checkbox" checked={item.checked} readOnly className="h-4 w-4" />
-                        <span dangerouslySetInnerHTML={{ __html: item.text }} />
-                      </li>
-                    ))
-                  : null}
+                {checklistItems.map((item, index) => (
+                  <li key={index} className="flex items-center gap-2">
+                    <input type="checkbox" checked={item.checked} readOnly className="h-4 w-4" />
+                    <span dangerouslySetInnerHTML={{ __html: item.text }} />
+                  </li>
+                ))}
               </ul>
             );
           case "image":
+            const imageData = data as {
+              file?: { url?: unknown; width?: unknown; height?: unknown } | unknown;
+              caption?: unknown;
+            };
+            const imageFile =
+              typeof imageData.file === "object" && imageData.file !== null
+                ? (imageData.file as { url?: unknown; width?: unknown; height?: unknown })
+                : undefined;
+            const imageUrl = typeof imageFile?.url === "string" ? imageFile.url : null;
+            const imageWidth = typeof imageFile?.width === "number" ? imageFile.width : 1200;
+            const imageHeight = typeof imageFile?.height === "number" ? imageFile.height : 675;
+            const imageCaption =
+              typeof imageData.caption === "string" ? imageData.caption : "";
             return (
               <figure key={block.id} className="my-6">
-                {typeof (data as { file?: unknown }).file === "object" && data.file &&
-                typeof (data.file as { url?: unknown }).url === "string" ? (
+                {imageUrl ? (
                   <Image
-                    src={data.file.url}
-                    alt={
-                      typeof (data as { caption?: unknown }).caption === "string"
-                        ? data.caption
-                        : ""
-                    }
-                    width={
-                      typeof (data.file as { width?: unknown }).width === "number"
-                        ? data.file.width
-                        : 1200
-                    }
-                    height={
-                      typeof (data.file as { height?: unknown }).height === "number"
-                        ? data.file.height
-                        : 675
-                    }
+                    src={imageUrl}
+                    alt={imageCaption}
+                    width={imageWidth}
+                    height={imageHeight}
                     className="w-full rounded-lg"
                   />
                 ) : null}
-                {typeof (data as { caption?: unknown }).caption === "string" ? (
-                  <figcaption className="mt-2 text-sm">{data.caption}</figcaption>
+                {imageCaption ? (
+                  <figcaption className="mt-2 text-sm">{imageCaption}</figcaption>
                 ) : null}
               </figure>
             );

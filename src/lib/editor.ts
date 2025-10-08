@@ -3,8 +3,8 @@ import { z } from "zod";
 export const editorBlockSchema = z.object({
   id: z.string().optional(),
   type: z.string(),
-  data: z.record(z.unknown()),
-  tunes: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()),
+  tunes: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const editorContentSchema = z.object({

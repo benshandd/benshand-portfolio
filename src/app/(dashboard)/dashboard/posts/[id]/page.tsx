@@ -17,13 +17,19 @@ export default async function PostEditorPage({ params }: PostEditorPageProps) {
     notFound();
   }
 
+  const normalizedPost = {
+    ...post,
+    heroImageUrl: post.heroImageUrl ?? "",
+    publishedAt: post.publishedAt ? post.publishedAt.toISOString() : null,
+  };
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Edit post</CardTitle>
       </CardHeader>
       <CardContent>
-        <PostEditorForm initialData={post} categories={categories} />
+        <PostEditorForm initialData={normalizedPost} categories={categories} />
       </CardContent>
     </Card>
   );

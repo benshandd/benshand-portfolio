@@ -38,12 +38,12 @@ export async function listBlogPosts(params: ListPostsParams = {}) {
   }
 
   if (params.query) {
-    conditions.push(
-      or(
-        ilike(blogPosts.title, `%${params.query}%`),
-        ilike(blogPosts.summary, `%${params.query}%`),
-      ),
-    );
+    const queryValue = params.query;
+    const queryCondition = or(
+      ilike(blogPosts.title, `%${queryValue}%`),
+      ilike(blogPosts.summary, `%${queryValue}%`),
+    ) as SQL<unknown>;
+    conditions.push(queryCondition);
   }
 
   if (params.categorySlug) {

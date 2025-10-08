@@ -13,6 +13,8 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 });
 
+type AppUserRole = "owner" | "editor" | "viewer";
+
 export const authConfig: NextAuthConfig = {
   session: {
     strategy: "jwt",
@@ -104,14 +106,20 @@ export const authConfig: NextAuthConfig = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.role = token.role as string | undefined;
+        const role = token.role;
+        const user = session.user as { role?: AppUserRole };
+        if (role === "owner" || role === "editor" || role === "viewer") {
+          user.role = role;
+        } else {
+          delete user.role;
+        }
       }
       return session;
     },
   },
   events: {
     async createUser({ user }) {
-      if (serverEnv.OWNER_EMAIL && user.email === serverEnv.OWNER_EMAIL) {
+      if (serverEnv.OWNER_EMAIL && user.email === serverEnv.OWNER_EMAIL && user.id) {
         await db
           .update(users)
           .set({ role: "owner" })

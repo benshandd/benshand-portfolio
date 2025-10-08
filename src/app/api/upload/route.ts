@@ -1,6 +1,5 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import sharp from "sharp";
 
 import { db } from "@/db/client";
 import { uploads } from "@/db/schema";
@@ -50,10 +49,22 @@ export async function POST(request: Request) {
   const now = new Date();
   const path = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}`;
 
-  const image = sharp(buffer, { failOn: "none" });
-  const metadata = await image.metadata();
+  let width: number | null = null;
+  let height: number | null = null;
+  let extension = file.type.split("/")[1] ?? "bin";
 
-  const extension = metadata.format ?? file.type.split("/")[1] ?? "bin";
+  try {
+    const sharpModule = await import("sharp");
+    const sharpInstance = sharpModule.default ?? sharpModule;
+    const image = sharpInstance(buffer, { failOn: "none" });
+    const metadata = await image.metadata();
+    width = metadata.width ?? null;
+    height = metadata.height ?? null;
+    extension = metadata.format ?? extension;
+  } catch (error) {
+    console.warn("Sharp unavailable, skipping image metadata", error);
+  }
+
   const objectPath = `${path}.${extension}`;
 
   const supabase = getSupabaseAdminClient();
@@ -73,15 +84,15 @@ export async function POST(request: Request) {
     publicUrl: data.publicUrl,
     size: buffer.length,
     mime: file.type,
-    width: metadata.width ?? null,
-    height: metadata.height ?? null,
+    width,
+    height,
     tags: [],
   });
 
   return NextResponse.json({
     path: objectPath,
     publicUrl: data.publicUrl,
-    width: metadata.width,
-    height: metadata.height,
+    width,
+    height,
   });
 }
