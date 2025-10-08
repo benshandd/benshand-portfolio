@@ -18,9 +18,12 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
 
 ## Phase 1 – Data & Infrastructure
 1. **Database schema**
-   - Define Drizzle schema per spec (users, profile_settings, blog tables, books, courses, uploads, snapshots).
-   - Add indexes, constraints, enums, relations, migrations via drizzle-kit.
-   - Seed script to insert base data (profile settings, categories, draft post, books, courses, owner user from env).
+   - Define Drizzle schema per spec (users, profile_settings, blog tables, books, courses, uploads) plus:
+     - `blog_post_slugs` history table (`post_id`, `slug`, `created_at`, `is_current`) to support 301 redirects.
+     - `blog_post_snapshots` table (`post_id`, `snapshot_json`, `author_id`, `created_at`) to retain last five autosave versions.
+     - `activity_logs` table for authoring/audit events (publish, delete, upload).
+   - Add indexes and constraints: trigram index on `blog_posts.title` + `summary` for search, partial index on published posts, `GIN` on tags, unique slug history constraint (`post_id`, `is_current`).
+   - Seed script to insert base data (profile settings, categories, draft post with Editor.js blocks, books, courses, owner user from env, initial slug history entry).
 2. **Supabase integration**
    - Configure Supabase client helper (service role for server actions only).
    - Storage bucket setup (`uploads`), signed URL utilities, image metadata storage.
@@ -38,12 +41,13 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
    - Server component fetching `profile_settings` (ISR 60s, `revalidateTag('profile')`).
    - Present hero text, contact links, social icons (Lucide), resume buttons.
 3. **Blog listing**
-   - Server components for `/blog` with pagination (page size 10), search (`?q=`), category/tag filters, `cacheTag: blog:list`.
-   - `/categories/[slug]` page filtering posts.
+   - Server components for `/blog` with pagination (page size 10), search (`?q=`) backed by trigram index, and combined category/tag filters via query params.
+   - Display filter chips, published date, reading time preview, and fallback messaging when no posts match.
+   - `/categories/[slug]` page filtering posts server-side while sharing the same cache tag utilities.
 4. **Blog detail**
-   - Static generation with incremental revalidation, `cacheTag: blog:post:{id}`.
-   - Render Editor.js JSON blocks via safe renderer (paragraph, header, list, image, code, quote, checklist). Handle unknown blocks.
-   - Include SEO metadata, JSON-LD, reading time, category/tags, next/prev links.
+   - Static generation with incremental revalidation, `cacheTag: blog:post:{id}`; slug lookup first checks `blog_post_slugs` and issues 301 redirect when `is_current` is false.
+   - Render Editor.js JSON blocks via safe renderer (paragraph, header, list, image, code, quote, checklist). Handle unknown blocks with graceful fallback UI.
+   - Inject structured SEO metadata, JSON-LD article schema, estimated reading time, category/tags, next/prev navigation, share links, and preview token support for drafts.
 5. **Bookshelf & Courses**
    - `/books` sorts by `order_index`.
    - `/courses` filter by `discipline` (RSC) with toggles.
@@ -53,11 +57,11 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
    - Protected layout with role banner (shared Supabase DB warning).
    - shadcn/ui navigation, breadcrumbs, command palette (Cmd/Ctrl+K).
 2. **Posts module**
-   - List view: filters (status, category, tag), search, row actions, status badges, `revalidate` hooks.
-   - Editor view: form using react-hook-form + Zod. Autosave (every 10s/on blur), dirty state warning, save status indicator.
-   - Editor.js integration with required tools, hero image selector (media picker), validation for publish (title, summary ≤180, category, hero image, ≥1 block).
-   - Publish/unpublish toggles adjust `status`, `published_at` (validate), call revalidation API.
-   - Versioning: maintain last 5 snapshots (separate table or JSONB array) with restore capability.
+   - List view: filters (status, category, tag), full-text search, row actions (Edit, Publish/Unpublish, Duplicate, Delete), status badges, updated timestamp, and quick access to slug history.
+   - Editor view: form using react-hook-form + Zod. Autosave queue (every 10s/on blur) writes to `blog_post_snapshots`, dirty state warning, save status indicator, and concurrent edit detection using updated timestamps.
+   - Editor.js integration with required tools, hero image selector (media picker), validation for publish (title, summary ≤180, category, hero image, ≥1 content block). Slug field auto-generates kebab-case and checks for uniqueness.
+   - Publish/unpublish toggles adjust `status`, `published_at`, append an activity log entry, revalidate list/detail tags, and prompt for confirmation when moving to published.
+   - Versioning drawer: surface last five snapshots, diff title/summary, restore action replaces current draft, logs activity entry.
 3. **Categories**
    - CRUD UI. Prevent delete if posts exist unless reassignment flow.
 4. **Books**
@@ -67,18 +71,18 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
 6. **Settings**
    - Form for hero text, contact email, socials, resume URLs, favicon/OG defaults upload. Autosave + dirty warning.
 7. **Media library**
-   - Grid view with search by filename/tag, copy URL, soft-delete (flag, ensure not referenced).
+   - Grid view with search by filename/tag, copy URL, soft-delete (flag, ensure not referenced), and activity logging for deletes/uploads.
 
 ## Phase 4 – APIs & Revalidation
 1. **Server actions**
-   - Implement typed server actions with Zod validation for CRUD operations.
-   - Ensure role-based checks and rate limiting (10/min/IP) on admin POST routes.
+   - Implement typed server actions with Zod validation for CRUD operations, encapsulated in `src/server/actions/*`.
+   - Ensure role-based checks, audit logging (into `activity_logs`), and rate limiting (10/min/IP) on admin POST routes.
 2. **Upload API**
    - `/api/upload` handles Editor.js image uploads, stores metadata in `uploads` table, returns JSON with `publicUrl`.
 3. **Revalidation API**
    - `/api/revalidate` verifying `REVALIDATE_SECRET` to trigger path/tag revalidation.
 4. **Revalidation hooks**
-   - On mutation actions, revalidate `/blog`, `/blog/[slug]`, category/tag pages via cache tags.
+   - On mutation actions, revalidate `/blog`, `/blog/[slug]`, category/tag pages via cache tags and refresh preview tokens when relevant.
 
 ## Phase 5 – Performance, Accessibility, and Testing
 1. **Performance tuning**
@@ -87,21 +91,18 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
 2. **Accessibility**
    - Audit with axe and manual keyboard testing. Provide alt text, focus states, reduced motion support.
 3. **Testing**
-   - Unit tests for data validation, auth, server actions.
-   - Component tests for Editor.js renderer (at least six block types) using React Testing Library.
-   - End-to-end smoke tests for dashboard flows (Playwright) focusing on role guards and publish workflow.
+   - Unit tests for data validation, auth, server actions, and slug redirect helpers.
+   - Component tests for Editor.js renderer (at least six block types) using React Testing Library plus snapshot restoration coverage.
+   - End-to-end smoke tests for dashboard flows (Playwright) focusing on role guards, publish workflow, slug change redirect, and draft preview links.
 
-## Phase 6 – Deployment & Operations
+## Phase 6 – Deployment & Documentation
 1. **Vercel deployment**
    - Connect repo, configure environment variables (shared Supabase DB, pooler URL).
-   - Set up preview deployments using same Supabase DB with clear warning.
+   - Set up preview deployments using same Supabase DB with clear warning banner in admin.
 2. **Supabase operations**
-   - Configure daily backups, monitoring, alerting.
-   - Document restore steps.
-3. **Monitoring & logging**
-   - Set up error tracking (Sentry) and log aggregation.
-4. **Documentation**
-   - Update README with setup instructions, admin usage guide, deployment process, backup strategy.
+   - Configure daily backups and document restore steps.
+3. **Documentation**
+   - Update README with setup instructions, admin usage guide, deployment process, backup strategy, and slug redirect/versioning notes.
 
 ## Milestones & Deliverables
 - **Milestone 1:** Foundations + schema + seed data.
@@ -116,6 +117,7 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
 - **Autosave conflicts**: Use optimistic UI with version field; warn on concurrent updates; consider row-level locking or compare timestamps.
 - **Supabase rate limits**: Batch operations where possible, implement exponential backoff.
 - **Security**: Strict separation of service role usage; never expose in client; audit API routes.
+- **Slug history accuracy**: Ensure slug history updates atomically with slug edits to avoid broken redirects.
 
 ## Success Criteria
 - Meets non-negotiables (Editor.js persistence, Supabase storage, Vercel deployment, auth & role guard).
