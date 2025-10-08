@@ -10,7 +10,6 @@ import {
   courses,
   courseDisciplineEnum,
   profileSettings,
-  uploads,
 } from "@/db/schema";
 
 interface ListPostsParams {
@@ -137,10 +136,6 @@ export async function listBooks() {
 export async function listCourses(discipline?: (typeof courseDisciplineEnum.enumValues)[number]) {
   const condition = discipline ? eq(courses.discipline, discipline) : undefined;
   return db.select().from(courses).where(condition).orderBy(desc(courses.createdAt));
-}
-
-export async function listUploads() {
-  return db.select().from(uploads).orderBy(desc(uploads.createdAt));
 }
 
 export async function getAdjacentPosts(postId: string) {

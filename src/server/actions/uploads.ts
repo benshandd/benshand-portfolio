@@ -30,6 +30,6 @@ export async function softDeleteUpload(input: z.infer<typeof softDeleteSchema>) 
   }
 
   await db.update(uploads).set({ deleted: true }).where(eq(uploads.id, parsed.id));
-  revalidatePath("/dashboard/media");
+  revalidatePath("/dashboard/posts");
   return { ok: true } as const;
 }
