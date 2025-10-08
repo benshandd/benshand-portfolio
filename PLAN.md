@@ -26,6 +26,8 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
    - Store repeatable socials in a companion table (`profile_social_links`) to keep the UI flexible without exposing JSON to admins.
    - Add indexes and constraints: trigram index on `blog_posts.title` + `summary` for search, partial index on published posts, `GIN` on tags, unique slug history constraint (`post_id`, `is_current`).
    - Seed script to insert base data (profile settings with uploaded asset placeholders, categories, draft post with Editor.js blocks, books, courses, owner user from env, initial slug history entry).
+   - Add indexes and constraints: trigram index on `blog_posts.title` + `summary` for search, partial index on published posts, `GIN` on tags, unique slug history constraint (`post_id`, `is_current`).
+   - Seed script to insert base data (profile settings, categories, draft post with Editor.js blocks, books, courses, owner user from env, initial slug history entry).
 2. **Supabase integration**
    - Configure Supabase client helper (service role for server actions only).
    - Storage bucket setup (`uploads`), signed URL utilities, image metadata storage.
