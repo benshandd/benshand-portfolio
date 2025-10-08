@@ -66,7 +66,7 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
    - CRUD UI. Prevent delete if posts exist unless reassignment flow.
 4. **Books**
    - CRUD with drag-and-drop reorder (persist `order_index`), cover upload.
-5. **Courses**
+4. **Courses**
    - CRUD with discipline select and CSV bulk import (server parsing, validation feedback).
 6. **Settings**
    - Form for hero text, contact email, socials, resume URLs, favicon/OG defaults upload. Autosave + dirty warning.
@@ -108,7 +108,7 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
 - **Milestone 1:** Foundations + schema + seed data.
 - **Milestone 2:** Public site MVP (home, blog list/detail, books, courses).
 - **Milestone 3:** Dashboard posts module with Editor.js integration.
-- **Milestone 4:** Remaining dashboard modules, media library, autosave/versioning.
+- **Milestone 4:** Remaining dashboard modules (books, courses, settings uploads) and autosave/versioning polish.
 - **Milestone 5:** Testing, performance, accessibility, deployment readiness.
 
 ## Risks & Mitigations
