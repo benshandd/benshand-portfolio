@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { useDebounce } from "usehooks-ts";
 
@@ -27,6 +27,10 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
     initialData.contentJson && "blocks" in initialData.contentJson
       ? (initialData.contentJson as EditorContent)
       : emptyEditorContent;
+  const [postId, setPostId] = useState(initialData.id ?? "");
+  const [publishedAt, setPublishedAt] = useState<string | null>(
+    (initialData.publishedAt as string | null | undefined) ?? null,
+  );
   const [title, setTitle] = useState(initialData.title ?? "");
   const [slug, setSlug] = useState(initialData.slug ?? "");
   const [summary, setSummary] = useState(initialData.summary ?? "");
@@ -40,10 +44,41 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(
     initialData.updatedAt ? new Date(initialData.updatedAt as Date | string) : null,
   );
+  const [isDirty, setIsDirty] = useState(false);
   const [, forceRelativeUpdate] = useReducer((count: number) => count + 1, 0);
-  const [, startTransition] = useTransition();
+  const beforeUnloadHandlerRef = useRef<((event: BeforeUnloadEvent) => void) | null>(null);
 
   const debouncedTitle = useDebounce(title, 500);
+
+  const normalizedTags = useMemo(() => {
+    return Array.from(
+      new Set(
+        tags
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter(Boolean),
+      ),
+    );
+  }, [tags]);
+
+  const currentSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        id: postId || null,
+        title: title.trim(),
+        slug: slug.trim(),
+        summary: summary.trim(),
+        categoryId: categoryId || null,
+        tags: normalizedTags,
+        heroImageUrl: heroImageUrl.trim(),
+        contentJson: content,
+        publishedAt,
+      }),
+    [categoryId, content, heroImageUrl, normalizedTags, postId, publishedAt, slug, summary, title],
+  );
+
+  const lastSavedSnapshotRef = useRef(currentSnapshot);
+  const hasInitialisedSnapshotRef = useRef(false);
 
   useEffect(() => {
     if (!isSlugDirty && debouncedTitle) {
@@ -52,12 +87,19 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
   }, [debouncedTitle, isSlugDirty]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      void handleSave("draft", { silent: true });
-    }, 10000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, slug, summary, categoryId, tags, heroImageUrl, content]);
+    if (!hasInitialisedSnapshotRef.current) {
+      hasInitialisedSnapshotRef.current = true;
+      lastSavedSnapshotRef.current = currentSnapshot;
+      setIsDirty(false);
+      return;
+    }
+
+    const hasChanges = currentSnapshot !== lastSavedSnapshotRef.current;
+    setIsDirty(hasChanges);
+    if (hasChanges && status === "saved") {
+      setStatus("idle");
+    }
+  }, [currentSnapshot, status]);
 
   useEffect(() => {
     if (!lastSavedAt) {
@@ -67,36 +109,124 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
     return () => clearInterval(id);
   }, [lastSavedAt]);
 
-  async function handleSave(nextStatus: "draft" | "published", options?: { silent?: boolean }) {
-    setStatus("saving");
-    const payload: UpsertPostInput = {
-      id: initialData.id,
-      title,
-      slug,
-      summary,
-      categoryId: categoryId || null,
-      tags: tags
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-      heroImageUrl,
+  const canSaveDraft = useMemo(() => {
+    return Boolean(title.trim() && slug.trim() && summary.trim());
+  }, [slug, summary, title]);
+
+  const canPublish = useMemo(() => {
+    return (
+      canSaveDraft &&
+      Boolean(categoryId) &&
+      Boolean(heroImageUrl.trim()) &&
+      Boolean(content?.blocks?.length)
+    );
+  }, [canSaveDraft, categoryId, content?.blocks?.length, heroImageUrl]);
+
+  const handleBeforeUnload = useCallback(
+    (event: BeforeUnloadEvent) => {
+      if (!isDirty) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    },
+    [isDirty],
+  );
+
+  useEffect(() => {
+    if (isDirty) {
+      window.addEventListener("beforeunload", handleBeforeUnload);
+      beforeUnloadHandlerRef.current = handleBeforeUnload;
+    } else if (beforeUnloadHandlerRef.current) {
+      window.removeEventListener("beforeunload", beforeUnloadHandlerRef.current);
+      beforeUnloadHandlerRef.current = null;
+    }
+
+    return () => {
+      if (beforeUnloadHandlerRef.current) {
+        window.removeEventListener("beforeunload", beforeUnloadHandlerRef.current);
+        beforeUnloadHandlerRef.current = null;
+      }
+    };
+  }, [handleBeforeUnload, isDirty]);
+
+  const buildPayload = useCallback(
+    (nextStatus: "draft" | "published"): UpsertPostInput => ({
+      id: postId || undefined,
+      title: title.trim(),
+      slug: slug.trim(),
+      summary: summary.trim(),
+      categoryId: categoryId ? categoryId : null,
+      tags: normalizedTags,
+      heroImageUrl: heroImageUrl.trim(),
       contentJson: content,
       status: nextStatus,
-      publishedAt: initialData.publishedAt ?? null,
-    };
+      publishedAt: publishedAt ?? null,
+    }),
+    [categoryId, content, heroImageUrl, normalizedTags, postId, publishedAt, slug, summary, title],
+  );
 
-    startTransition(async () => {
+  const handleSave = useCallback(
+    async (nextStatus: "draft" | "published", options?: { silent?: boolean }) => {
+      if (nextStatus === "draft" && !canSaveDraft) {
+        return;
+      }
+      if (nextStatus === "published" && !canPublish) {
+        return;
+      }
+
+      setStatus("saving");
+      const payload = buildPayload(nextStatus);
+
       try {
-        await upsertPost(payload);
+        const result = await upsertPost(payload);
         const savedAt = new Date();
+        const resolvedId = result.id ?? postId ?? "";
+        setPostId(resolvedId);
+        if (nextStatus === "draft") {
+          setPublishedAt(null);
+        } else if (!publishedAt) {
+          setPublishedAt(savedAt.toISOString());
+        }
         setLastSavedAt(savedAt);
+        lastSavedSnapshotRef.current = JSON.stringify({
+          id: resolvedId || null,
+          title: payload.title,
+          slug: payload.slug,
+          summary: payload.summary,
+          categoryId: payload.categoryId,
+          tags: payload.tags,
+          heroImageUrl: payload.heroImageUrl,
+          contentJson: payload.contentJson,
+          publishedAt: nextStatus === "draft" ? null : publishedAt ?? savedAt.toISOString(),
+        });
+        setIsDirty(false);
         setStatus(options?.silent ? "idle" : "saved");
       } catch (error) {
         console.error(error);
         setStatus("error");
       }
-    });
-  }
+    },
+    [buildPayload, canPublish, canSaveDraft, postId, publishedAt],
+  );
+
+  const handleAutoSave = useCallback(() => {
+    if (!isDirty || !canSaveDraft || status === "saving") {
+      return;
+    }
+    void handleSave("draft", { silent: true });
+  }, [canSaveDraft, handleSave, isDirty, status]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      handleAutoSave();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [handleAutoSave]);
+
+  const handleBlurAutoSave = useCallback(() => {
+    handleAutoSave();
+  }, [handleAutoSave]);
 
   const statusLabel = useMemo(() => {
     switch (status) {
@@ -122,8 +252,21 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
           <Button type="button" variant="outline" onClick={() => setIsPreview((prev) => !prev)}>
             {isPreview ? "Edit" : "Preview"}
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleSave("draft")}>Save draft</Button>
-          <Button type="button" onClick={() => void handleSave("published")}>Publish</Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleSave("draft")}
+            disabled={!canSaveDraft || status === "saving"}
+          >
+            Save draft
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleSave("published")}
+            disabled={!canPublish || status === "saving"}
+          >
+            Publish
+          </Button>
         </div>
       </div>
       <div className="grid gap-4 md:grid-cols-2">
@@ -133,6 +276,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
             id="title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            onBlur={handleBlurAutoSave}
             placeholder="My latest breakthrough"
           />
         </div>
@@ -145,6 +289,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
               setIsSlugDirty(true);
               setSlug(event.target.value);
             }}
+            onBlur={handleBlurAutoSave}
             placeholder="my-latest-breakthrough"
           />
         </div>
@@ -155,6 +300,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
           id="summary"
           value={summary}
           onChange={(event) => setSummary(event.target.value)}
+          onBlur={handleBlurAutoSave}
           maxLength={180}
         />
         <div className="text-xs text-[hsl(var(--fg-muted))]">{summary.length} / 180 characters</div>
@@ -166,6 +312,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
             id="category"
             value={categoryId}
             onChange={(event) => setCategoryId(event.target.value)}
+            onBlur={handleBlurAutoSave}
             className="h-10 rounded-md border border-[hsl(var(--input))] bg-transparent px-3 text-sm"
           >
             <option value="">Select category</option>
@@ -182,6 +329,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
             id="tags"
             value={tags}
             onChange={(event) => setTags(event.target.value)}
+            onBlur={handleBlurAutoSave}
             placeholder="neuroscience, productivity"
           />
           <p className="text-xs text-[hsl(var(--fg-muted))]">Separate tags with commas.</p>
@@ -192,6 +340,7 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
             id="heroImage"
             value={heroImageUrl}
             onChange={(event) => setHeroImageUrl(event.target.value)}
+            onBlur={handleBlurAutoSave}
             placeholder="https://..."
           />
         </div>
@@ -203,7 +352,10 @@ export function PostEditorForm({ initialData, categories }: PostEditorFormProps)
             <EditorRenderer content={content} />
           </div>
         ) : (
-          <div className="rounded-lg border border-[hsl(var(--border))] p-6">
+          <div
+            className="rounded-lg border border-[hsl(var(--border))] p-6"
+            onBlurCapture={handleBlurAutoSave}
+          >
             <Editor value={content} onChange={(data) => setContent(data)} />
           </div>
         )}
