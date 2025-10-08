@@ -22,10 +22,8 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
      - `blog_post_slugs` history table (`post_id`, `slug`, `created_at`, `is_current`) to support 301 redirects.
      - `blog_post_snapshots` table (`post_id`, `snapshot_json`, `author_id`, `created_at`) to retain last five autosave versions.
      - `activity_logs` table for authoring/audit events (publish, delete, upload).
-   - Expand `profile_settings` columns so common values no longer require manual JSON editing: `hero_text`, `contact_email`, `github_url`, `linkedin_url`, `twitter_url`, `bluesky_url`, `resume_asset_id`, `transcript_asset_id`, `favicon_asset_id`, `og_image_asset_id`, `location`, `headline`, `about_markdown`.
-   - Store repeatable socials in a companion table (`profile_social_links`) to keep the UI flexible without exposing JSON to admins.
    - Add indexes and constraints: trigram index on `blog_posts.title` + `summary` for search, partial index on published posts, `GIN` on tags, unique slug history constraint (`post_id`, `is_current`).
-   - Seed script to insert base data (profile settings with uploaded asset placeholders, categories, draft post with Editor.js blocks, books, courses, owner user from env, initial slug history entry).
+   - Seed script to insert base data (profile settings, categories, draft post with Editor.js blocks, books, courses, owner user from env, initial slug history entry).
 2. **Supabase integration**
    - Configure Supabase client helper (service role for server actions only).
    - Storage bucket setup (`uploads`), signed URL utilities, image metadata storage.
@@ -59,19 +57,21 @@ This plan outlines how to deliver a modern, fast, and accessible developer portf
    - Protected layout with role banner (shared Supabase DB warning).
    - shadcn/ui navigation, breadcrumbs, command palette (Cmd/Ctrl+K).
 2. **Posts module**
-   - List view: filters (status, category, tag), full-text search, row actions (Edit, Publish/Unpublish, Duplicate, Delete), status badges, updated timestamp, quick access to slug history, and a prominent “New Post” button that opens a draft editor seeded with default blocks.
+   - List view: filters (status, category, tag), full-text search, row actions (Edit, Publish/Unpublish, Duplicate, Delete), status badges, updated timestamp, and quick access to slug history.
    - Editor view: form using react-hook-form + Zod. Autosave queue (every 10s/on blur) writes to `blog_post_snapshots`, dirty state warning, save status indicator, and concurrent edit detection using updated timestamps.
-   - Editor.js integration with required tools, drag-and-drop image block uploads, inline formatting controls, hero image selector, and block-level toolbar. Validation for publish (title, summary ≤180, category, hero image, ≥1 content block). Slug field auto-generates kebab-case and checks for uniqueness.
-   - Inline creatable category selector: authors can add a new category on the fly without leaving the editor. Under the hood this writes to `blog_categories`, eliminating the need for a separate categories admin page.
+   - Editor.js integration with required tools, hero image selector (media picker), validation for publish (title, summary ≤180, category, hero image, ≥1 content block). Slug field auto-generates kebab-case and checks for uniqueness.
    - Publish/unpublish toggles adjust `status`, `published_at`, append an activity log entry, revalidate list/detail tags, and prompt for confirmation when moving to published.
    - Versioning drawer: surface last five snapshots, diff title/summary, restore action replaces current draft, logs activity entry.
-3. **Books**
+3. **Categories**
+   - CRUD UI. Prevent delete if posts exist unless reassignment flow.
+4. **Books**
    - CRUD with drag-and-drop reorder (persist `order_index`), cover upload.
 4. **Courses**
    - CRUD with discipline select and CSV bulk import (server parsing, validation feedback).
-5. **Settings**
-   - Guided form organized by sections (Profile, Contact, Documents, Site Meta). Inputs include plain text fields, toggleable link lists, and dedicated upload controls for favicon, default OG image, resume, and transcript files. Each upload writes to the `uploads` table and stores the resulting asset ID on `profile_settings`.
-   - Provide repeatable field UI for additional links (e.g., “Add another link”) so admins never have to craft JSON manually. Autosave + dirty warning remains.
+6. **Settings**
+   - Form for hero text, contact email, socials, resume URLs, favicon/OG defaults upload. Autosave + dirty warning.
+7. **Media library**
+   - Grid view with search by filename/tag, copy URL, soft-delete (flag, ensure not referenced), and activity logging for deletes/uploads.
 
 ## Phase 4 – APIs & Revalidation
 1. **Server actions**
