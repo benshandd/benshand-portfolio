@@ -1,19 +1,14 @@
 import { z } from "zod";
 
-export const editorBlockSchema = z.object({
-  id: z.string().optional(),
-  type: z.string(),
-  data: z.record(z.unknown()),
-  tunes: z.record(z.unknown()).optional(),
-});
-
 export const editorContentSchema = z.object({
-  time: z.number().optional(),
-  version: z.string().optional(),
-  blocks: z.array(editorBlockSchema),
+  type: z.literal("doc"),
+  content: z.array(z.any()).optional(),
 });
 
-export type EditorBlock = z.infer<typeof editorBlockSchema>;
 export type EditorContent = z.infer<typeof editorContentSchema>;
 
-export const emptyEditorContent: EditorContent = { blocks: [] };
+export const emptyEditorContent: EditorContent = { type: "doc", content: [{ type: "paragraph" }] };
+
+export function isEditorContentEmpty(content: EditorContent | null | undefined) {
+  return !content || !Array.isArray(content.content) || content.content.length === 0;
+}

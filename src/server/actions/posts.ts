@@ -13,9 +13,10 @@ import {
   blogPosts,
 } from "@/db/schema";
 import { CACHE_TAGS } from "@/lib/cache";
-import { editorContentSchema, type EditorContent } from "@/lib/editor";
+import { editorContentSchema, isEditorContentEmpty, type EditorContent } from "@/lib/editor";
 import { slugify } from "@/lib/utils";
 import { enforceRateLimit, resolveServerActionKey } from "@/lib/rate-limit";
+import { tiptapContentToPlainText } from "@/lib/tiptap";
 
 import { requireAuth } from "../session";
 
@@ -25,14 +26,16 @@ const basePostSchema = z.object({
   slug: z.string().min(1, "Slug is required"),
   summary: z
     .string()
+    .trim()
     .max(180, "Summary must be 180 characters or fewer")
-    .min(1, "Summary is required"),
-  categoryId: z.string().uuid().nullable(),
-  tags: z.array(z.string().min(1)).max(20).default([]),
+    .optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+  tags: z.array(z.string().min(1)).max(20).optional().default([]),
   heroImageUrl: z
     .string()
     .trim()
-    .refine((value) => value === "" || /^https?:\/\//.test(value), {
+    .optional()
+    .refine((value) => !value || /^https?:\/\//.test(value), {
       message: "Hero image URL must be empty or a valid URL",
     }),
   contentJson: editorContentSchema,
@@ -42,25 +45,11 @@ const basePostSchema = z.object({
 
 const publishRequirementsSchema = basePostSchema.superRefine((data, ctx) => {
   if (data.status === "published") {
-    if (!data.categoryId) {
-      ctx.addIssue({
-        path: ["categoryId"],
-        code: z.ZodIssueCode.custom,
-        message: "Category is required to publish",
-      });
-    }
-    if (!data.contentJson.blocks.length) {
+    if (isEditorContentEmpty(data.contentJson)) {
       ctx.addIssue({
         path: ["contentJson"],
         code: z.ZodIssueCode.custom,
-        message: "At least one content block is required",
-      });
-    }
-    if (!data.heroImageUrl) {
-      ctx.addIssue({
-        path: ["heroImageUrl"],
-        code: z.ZodIssueCode.custom,
-        message: "Hero image is required to publish",
+        message: "Content is required to publish",
       });
     }
   }
@@ -82,7 +71,18 @@ export async function upsertPost(input: UpsertPostInput) {
         : new Date()
       : null;
 
-  const readingStats = readingTime(JSON.stringify(parsed.contentJson));
+  const plainTextContent = tiptapContentToPlainText(parsed.contentJson).trim();
+  const summaryValue =
+    (parsed.summary ?? "").trim() ||
+    plainTextContent.slice(0, 180) ||
+    "Draft in progress";
+  const categoryId = parsed.categoryId ?? null;
+  const tags = parsed.tags ?? [];
+  const heroImageUrl = parsed.heroImageUrl?.trim()
+    ? parsed.heroImageUrl.trim()
+    : null;
+
+  const readingStats = readingTime(plainTextContent);
 
   if (parsed.id) {
     await db
@@ -90,10 +90,10 @@ export async function upsertPost(input: UpsertPostInput) {
       .set({
         title: parsed.title,
         slug: normalizedSlug,
-        summary: parsed.summary,
-        categoryId: parsed.categoryId ?? null,
-        tags: parsed.tags,
-        heroImageUrl: parsed.heroImageUrl || null,
+        summary: summaryValue,
+        categoryId,
+        tags,
+        heroImageUrl,
         contentJson: parsed.contentJson,
         status: parsed.status,
         publishedAt: publishedAtValue,
@@ -103,8 +103,8 @@ export async function upsertPost(input: UpsertPostInput) {
       .where(eq(blogPosts.id, parsed.id));
 
     await db.delete(blogPostTags).where(eq(blogPostTags.postId, parsed.id));
-    if (parsed.tags.length) {
-      await db.insert(blogPostTags).values(parsed.tags.map((tag) => ({ postId: parsed.id!, tag })));
+    if (tags.length) {
+      await db.insert(blogPostTags).values(tags.map((tag) => ({ postId: parsed.id!, tag })));
     }
   } else {
     const [inserted] = await db
@@ -112,10 +112,10 @@ export async function upsertPost(input: UpsertPostInput) {
       .values({
         title: parsed.title,
         slug: normalizedSlug,
-        summary: parsed.summary,
-        categoryId: parsed.categoryId ?? null,
-        tags: parsed.tags,
-        heroImageUrl: parsed.heroImageUrl || null,
+        summary: summaryValue,
+        categoryId,
+        tags,
+        heroImageUrl,
         contentJson: parsed.contentJson,
         status: parsed.status,
         publishedAt: publishedAtValue,
@@ -127,8 +127,8 @@ export async function upsertPost(input: UpsertPostInput) {
       throw new Error("Failed to create post");
     }
 
-    if (parsed.tags.length) {
-      await db.insert(blogPostTags).values(parsed.tags.map((tag) => ({ postId: inserted.id, tag })));
+    if (tags.length) {
+      await db.insert(blogPostTags).values(tags.map((tag) => ({ postId: inserted.id, tag })));
     }
 
     parsed.id = inserted.id;

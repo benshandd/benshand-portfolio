@@ -104,14 +104,17 @@ export const authConfig: NextAuthConfig = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.role = token.role as string | undefined;
+        const role = token.role;
+        if (role === "owner" || role === "editor" || role === "viewer") {
+          session.user.role = role;
+        }
       }
       return session;
     },
   },
   events: {
     async createUser({ user }) {
-      if (serverEnv.OWNER_EMAIL && user.email === serverEnv.OWNER_EMAIL) {
+      if (serverEnv.OWNER_EMAIL && user.email === serverEnv.OWNER_EMAIL && user.id) {
         await db
           .update(users)
           .set({ role: "owner" })

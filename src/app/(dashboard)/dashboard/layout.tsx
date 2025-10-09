@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { ReactNode } from "react";
 
+import { DashboardSidebarNav, type DashboardNavItem } from "@/components/client/dashboard-sidebar-nav";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { requireAuth } from "@/server/session";
 
-type Role = "owner" | "editor" | "viewer";
-
-const navItems: Array<{ href: string; label: string; roles: Role[] }> = [
+const navItems: DashboardNavItem[] = [
   { href: "/dashboard", label: "Dashboard", roles: ["owner", "editor", "viewer"] },
   { href: "/dashboard/posts", label: "Posts", roles: ["owner", "editor", "viewer"] },
   { href: "/dashboard/books", label: "Books", roles: ["owner", "editor", "viewer"] },
@@ -24,22 +22,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <div className="flex h-16 items-center justify-between px-6">
           <span className="text-sm font-semibold uppercase tracking-wide">Admin</span>
         </div>
-        <nav className="space-y-1 px-4 py-4 text-sm">
-          {navItems
-            .filter((item) => item.roles.includes(role))
-            .map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  buttonVariants({ variant: "ghost" }),
-                  "w-full justify-start text-left",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-        </nav>
+        <DashboardSidebarNav role={role} items={navItems} />
         <div className="px-4 py-6 text-xs text-[hsl(var(--fg-muted))]">
           Shared Supabase database across environments. Be mindful of destructive actions.
         </div>

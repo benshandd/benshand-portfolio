@@ -61,6 +61,7 @@ export function FileUploadField({
       const response = await fetch("/api/upload", {
         method: "POST",
         body: formData,
+        credentials: "include",
       });
 
       if (!response.ok) {
@@ -95,7 +96,11 @@ export function FileUploadField({
           <Input
             id={inputId}
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => {
+              onChange(event.target.value);
+              setStatus("idle");
+              setMessage("");
+            }}
             placeholder={placeholder}
             disabled={disabled}
             className="sm:flex-1"
@@ -123,7 +128,11 @@ export function FileUploadField({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => onChange("")}
+            onClick={() => {
+              onChange("");
+              setStatus("idle");
+              setMessage("");
+            }}
             disabled={disabled}
           >
             Clear

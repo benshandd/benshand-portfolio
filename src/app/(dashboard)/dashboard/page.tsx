@@ -8,12 +8,17 @@ import { listBlogPosts } from "@/server/queries";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardHome() {
-  const [{ value: totalPosts }, { value: publishedPosts }, { value: totalBooks }, { value: totalCourses }] = await Promise.all([
+  const [totalPostsResult, publishedPostsResult, totalBooksResult, totalCoursesResult] = await Promise.all([
     db.select({ value: count() }).from(blogPosts),
     db.select({ value: count() }).from(blogPosts).where(eq(blogPosts.status, "published")),
     db.select({ value: count() }).from(books),
     db.select({ value: count() }).from(courses),
   ]);
+
+  const totalPosts = totalPostsResult[0]?.value ?? 0;
+  const publishedPosts = publishedPostsResult[0]?.value ?? 0;
+  const totalBooks = totalBooksResult[0]?.value ?? 0;
+  const totalCourses = totalCoursesResult[0]?.value ?? 0;
 
   const recentPosts = await listBlogPosts({ pageSize: 5 });
 

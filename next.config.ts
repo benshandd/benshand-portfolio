@@ -7,7 +7,7 @@ const cspDirectives = [
   "default-src 'self'",
   `connect-src 'self'${supabaseHost ? ` https://${supabaseHost}` : ""}`,
   "font-src 'self'",
-  `img-src 'self' data: blob:${supabaseHost ? ` https://${supabaseHost}` : ""}`,
+  `img-src 'self' data: blob:${supabaseHost ? ` https://${supabaseHost}` : ""} https://images.unsplash.com`,
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "frame-ancestors 'none'",
@@ -17,15 +17,22 @@ const cspDirectives = [
 
 const nextConfig: NextConfig = {
   images: {
-    remotePatterns: supabaseHost
-      ? [
-          {
-            protocol: "https",
-            hostname: supabaseHost,
-            pathname: "/**",
-          },
-        ]
-      : [],
+    remotePatterns: [
+      ...(supabaseHost
+        ? [
+            {
+              protocol: "https",
+              hostname: supabaseHost,
+              pathname: "/**",
+            },
+          ]
+        : []),
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+        pathname: "/**",
+      },
+    ],
   },
   async headers() {
     const contentSecurityPolicy = cspDirectives.join("; ");

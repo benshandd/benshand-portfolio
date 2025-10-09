@@ -1,6 +1,6 @@
 import { cache } from "react";
 import type { SQL } from "drizzle-orm";
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, lt, gt, or, sql } from "drizzle-orm";
 
 import { db } from "@/db/client";
 import {
@@ -37,12 +37,14 @@ export async function listBlogPosts(params: ListPostsParams = {}) {
   }
 
   if (params.query) {
-    conditions.push(
-      or(
-        ilike(blogPosts.title, `%${params.query}%`),
-        ilike(blogPosts.summary, `%${params.query}%`),
-      ),
+    const queryTerm = `%${params.query}%`;
+    const queryCondition = or(
+      ilike(blogPosts.title, queryTerm)!,
+      ilike(blogPosts.summary, queryTerm)!,
     );
+    if (queryCondition) {
+      conditions.push(queryCondition);
+    }
   }
 
   if (params.categorySlug) {
@@ -154,14 +156,14 @@ export async function getAdjacentPosts(postId: string) {
   const [previous] = await db
     .select({ id: blogPosts.id, slug: blogPosts.slug, title: blogPosts.title })
     .from(blogPosts)
-    .where(and(eq(blogPosts.status, "published"), sql`${blogPosts.publishedAt} < ${current.publishedAt}`))
+    .where(and(eq(blogPosts.status, "published"), lt(blogPosts.publishedAt, current.publishedAt)))
     .orderBy(desc(blogPosts.publishedAt))
     .limit(1);
 
   const [next] = await db
     .select({ id: blogPosts.id, slug: blogPosts.slug, title: blogPosts.title })
     .from(blogPosts)
-    .where(and(eq(blogPosts.status, "published"), sql`${blogPosts.publishedAt} > ${current.publishedAt}`))
+    .where(and(eq(blogPosts.status, "published"), gt(blogPosts.publishedAt, current.publishedAt)))
     .orderBy(blogPosts.publishedAt)
     .limit(1);
 

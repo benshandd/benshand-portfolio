@@ -3,10 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
-import { EditorRenderer } from "@/components/editor/renderer";
 import { Badge } from "@/components/ui/badge";
 import { siteConfig } from "@/config/site";
 import { formatDate } from "@/lib/utils";
+import { TiptapRenderer } from "@/features/renderer/tiptap";
 import { getAdjacentPosts, getBlogPostBySlug, listCategories } from "@/server/queries";
 
 interface BlogPostPageProps {
@@ -104,7 +104,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         />
       ) : null}
 
-      <EditorRenderer content={post.contentJson} />
+      <TiptapRenderer content={post.contentJson} />
 
       <nav className="flex flex-col gap-4 border-t border-[hsl(var(--border))] pt-6 text-sm">
         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

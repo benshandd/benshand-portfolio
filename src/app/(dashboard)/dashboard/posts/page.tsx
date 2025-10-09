@@ -77,11 +77,19 @@ export default async function PostsPage({ searchParams }: PostsPageProps) {
                   <div className="mt-2 text-xs uppercase tracking-wide text-[hsl(var(--fg-muted))]">{post.status}</div>
                 </div>
                 <div className="flex gap-2">
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/blog/${post.slug}`} target="_blank">
-                      Preview
-                    </Link>
-                  </Button>
+                  {post.status === "published" ? (
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/blog/${post.slug}`} target="_blank" rel="noreferrer">
+                        View live
+                      </Link>
+                    </Button>
+                  ) : (
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/dashboard/posts/${post.id}/preview`}>
+                        Preview
+                      </Link>
+                    </Button>
+                  )}
                   {canEdit ? (
                     <form action={handleDuplicate}>
                       <input type="hidden" name="id" value={post.id} />

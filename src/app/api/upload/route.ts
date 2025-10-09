@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
-import sharp from "sharp";
+import imageSize from "image-size";
 
 import { db } from "@/db/client";
 import { uploads } from "@/db/schema";
@@ -50,15 +50,34 @@ export async function POST(request: Request) {
   const now = new Date();
   const path = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${randomUUID()}`;
 
-  const image = sharp(buffer, { failOn: "none" });
-  const metadata = await image.metadata();
+  const fileName = typeof file.name === "string" ? file.name : "";
+  const mimeType = file.type || "application/octet-stream";
+  let extension = fileName.includes(".") ? fileName.split(".").pop()?.toLowerCase() ?? null : null;
+  if (!extension && mimeType.includes("/")) {
+    extension = mimeType.split("/")[1]?.toLowerCase() ?? null;
+  }
 
-  const extension = metadata.format ?? file.type.split("/")[1] ?? "bin";
-  const objectPath = `${path}.${extension}`;
+  let width: number | undefined;
+  let height: number | undefined;
+
+  if (mimeType.startsWith("image/")) {
+    try {
+      const dimensions = imageSize(buffer);
+      width = dimensions.width ?? undefined;
+      height = dimensions.height ?? undefined;
+      if (dimensions.type) {
+        extension = dimensions.type;
+      }
+    } catch (error) {
+      console.warn("Failed to read image metadata", error);
+    }
+  }
+
+  const objectPath = `${path}.${extension ?? "bin"}`;
 
   const supabase = getSupabaseAdminClient();
   const { error } = await supabase.storage.from(serverEnv.SUPABASE_BUCKET).upload(objectPath, buffer, {
-    contentType: file.type,
+    contentType: mimeType,
     upsert: false,
   });
 
@@ -72,16 +91,16 @@ export async function POST(request: Request) {
     path: objectPath,
     publicUrl: data.publicUrl,
     size: buffer.length,
-    mime: file.type,
-    width: metadata.width ?? null,
-    height: metadata.height ?? null,
+    mime: mimeType,
+    width: width ?? null,
+    height: height ?? null,
     tags: [],
   });
 
   return NextResponse.json({
     path: objectPath,
     publicUrl: data.publicUrl,
-    width: metadata.width,
-    height: metadata.height,
+    width,
+    height,
   });
 }
